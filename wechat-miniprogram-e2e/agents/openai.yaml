@@ -1,0 +1,4 @@
+interface:
+  display_name: "微信小程序 E2E"
+  short_description: "微信开发者工具真实端到端测试调试流程"
+  default_prompt: "Use $wechat-miniprogram-e2e to run and debug real WeChat Mini Program end-to-end tests."

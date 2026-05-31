@@ -1,0 +1,4 @@
+interface:
+  display_name: "PRD Experts"
+  short_description: "补齐和审查 AI 可执行 PRD 的范围流程状态与线稿"
+  default_prompt: "Use $prd-experts to review or complete an AI-executable PRD with atomic requirements, explicit flows, complete states, data consistency, mobile interaction constraints, acceptance checks, and UI-guiding product wireframes; deliver only product documentation and Markdown/ASCII product wireframes."
