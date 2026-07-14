@@ -1,7 +1,6 @@
 ---
 name: wx-minigame
-description: 微信小游戏开发完整指南，覆盖 H5 到小游戏的全链路迁移适配。当用户提到微信小游戏、minigame、wx适配、H5移植、Canvas游戏迁移时必须使用此 skill。也适用于用户遇到小游戏特有问题的场景，例如"小游戏黑屏"、"iOS真机没声音"、"模拟器正常真机不行"、"Can't find variable setTimeout"、"weapp-adapter"、"wx.createCanvas"、"胶囊按钮遮挡"、"触摸事件不生效"、"InnerAudioContext"、"wx Storage"等。即使用户没有明确说"小游戏"，只要涉及 GameGlobal、wx.onTouchStart、wx.createInnerAudioContext 等微信小游戏 API，也应触发此 skill。也覆盖小游戏中使用 WebGL 的场景，如"渐变色阶""banding""preserveDrawingBuffer""drawImage WebGL canvas"等。
-user_invocable: true
+description: 微信小游戏开发完整指南，覆盖 H5 到小游戏的全链路迁移适配。当用户提到微信小游戏、minigame、wx适配、H5移植、Canvas游戏迁移时必须使用此 skill。也适用于用户遇到小游戏特有问题的场景，例如"小游戏黑屏"、"iOS真机没声音"、"模拟器正常真机不行"、"Can't find variable setTimeout"、"weapp-adapter"、"wx.createCanvas"、"胶囊按钮遮挡"、"触摸事件不生效"、"InnerAudioContext"、"wx Storage"、排行榜云函数、共享云环境、头像昵称授权、隐私协议、相册头像上传等。即使用户没有明确说"小游戏"，只要涉及 GameGlobal、wx.onTouchStart、wx.createInnerAudioContext、wx.cloud、wx.createUserInfoButton 等微信小游戏 API，也应触发此 skill。也覆盖小游戏中使用 WebGL 的场景，如"渐变色阶""banding""preserveDrawingBuffer""drawImage WebGL canvas"等。
 ---
 
 # 微信小游戏开发与 H5 迁移指南
@@ -14,6 +13,7 @@ user_invocable: true
 - **移植已有 H5 功能时**：直接走§16 迁移检查清单，逐项对照
 - **排查真机问题时**：查§15 常见报错速查表，定位已知陷阱
 - **实现触摸滚动时**：§11 有核心原则，详细参数见 `references/scroll-physics.md`
+- **实现排行榜、云函数、头像昵称资料时**：先读 `references/leaderboard-cloud-profile.md`，按其中“一次性实现完整排行榜功能”和“授权资料获取流程”完成闭环
 
 ---
 
@@ -312,6 +312,18 @@ export function getItem(key: string): string | null {
 ```
 
 其余 API 按同样模式封装。`wx.request` 需在微信后台配置合法域名白名单（开发时可勾选"不校验合法域名"）。
+
+---
+
+## 10. 云开发排行榜与头像昵称资料
+
+涉及排行榜、共享云环境、云函数缓存、头像昵称授权、相册头像上传或真机资料保存回退问题时，先读 `references/leaderboard-cloud-profile.md`。
+
+核心原则：
+- 客户端、云函数、集合必须确认在同一云环境；共享云环境下尤其要区分 `OPENID` 与 `FROM_OPENID`。
+- 云端写入用户资料和榜单值应是主路径，缓存写入只做 best-effort，不能阻断保存成功。
+- 客户端保存资料后要以本次提交为短期权威，并写本地缓存；榜单刷新返回旧缓存时不能反向覆盖刚保存的昵称头像。
+- 微信头像昵称入口优先用小游戏原生能力（如透明 `createUserInfoButton` 覆盖 Canvas 区域），相册上传属于可选能力，真机隐私授权失败时应能隐藏入口或清晰降级。
 
 ---
 
