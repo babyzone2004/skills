@@ -9,6 +9,7 @@
 - [云环境与 openid](#云环境与-openid)
 - [云函数设计](#云函数设计)
 - [客户端一致性策略](#客户端一致性策略)
+- [朋友排行 sharedCanvas 尺寸与 DPR](#朋友排行-sharedcanvas-尺寸与-dpr)
 - [Canvas 资料编辑 UI](#canvas-资料编辑-ui)
 - [微信头像与相册头像](#微信头像与相册头像)
 - [部署清单](#部署清单)
@@ -170,6 +171,105 @@ Canvas 没有 DOM，首次授权要用原生按钮覆盖自绘头像区域：
 - **第一次进入有榜单，点击刷新变空**：`forceRefresh` 重算路径失败或查错集合；刷新失败/空结果要回退非空缓存。
 - **保存资料后榜单行仍旧头像昵称**：缓存条目没有同步 profile，或客户端没有把本次提交覆盖到当前用户行。
 - **云函数 500**：先看云函数日志；常见是集合名前缀错、doc update 目标不存在但没 set、`FROM_OPENID` 没取、缓存写失败未隔离、索引/权限错误。
+
+## 朋友排行 sharedCanvas 尺寸与 DPR
+
+标准朋友排行由主域写托管数据并展示开放数据域画布，开放数据域调用 `wx.getFriendCloudStorage` 读取好友数据。出现以下症状时，优先检查画布所有权和坐标系：
+
+| 症状 | 常见根因 |
+|------|----------|
+| `[GameOpenDataContext] Cannot assign to read only canvas` | 开放数据域给 `wx.getSharedCanvas()` 返回值重新赋 `width/height` |
+| 榜单压缩成左上角小条 | 物理像素缓冲区被当作逻辑尺寸，或主域贴图时再次按 DPR 缩放 |
+| 已拿到好友数据但画面空白 | 子域绘制前因只读赋值异常中断，或主域在绘制后反复 resize 清空缓冲区 |
+| 页面持续闪烁加载态 | 主域每帧重复发请求，或每次请求都重设画布尺寸并清空内容 |
+
+### 职责边界
+
+严格遵守以下所有权：
+
+- **主域可写尺寸**：通过 `wx.getOpenDataContext()` 获得 `openDataContext.canvas`，在发送渲染消息前设置物理缓冲区尺寸。
+- **开放数据域只读尺寸**：通过 `wx.getSharedCanvas()` 获得同一画布，只读取 `width/height`；禁止在子域赋值，即使开发者工具某些版本允许也不要依赖。
+- **消息传逻辑布局**：主域传 `canvasWidth/canvasHeight`、内容区 `x/y/width/height` 和 `dpr`。布局坐标统一使用逻辑像素。
+
+主域：
+
+```ts
+const openDataContext = wx.getOpenDataContext({
+  sharedCanvasMode: 'offscreenCanvas',
+})
+const sharedCanvas = openDataContext.canvas
+
+const physicalWidth = Math.round(canvasWidth * dpr)
+const physicalHeight = Math.round(canvasHeight * dpr)
+if (sharedCanvas.width !== physicalWidth) sharedCanvas.width = physicalWidth
+if (sharedCanvas.height !== physicalHeight) sharedCanvas.height = physicalHeight
+
+openDataContext.postMessage({
+  type: 'friendLeaderboard:render',
+  canvasWidth,
+  canvasHeight,
+  x: contentRect.x,
+  y: contentRect.y,
+  width: contentRect.w,
+  height: contentRect.h,
+  dpr,
+})
+```
+
+只在尺寸变化时赋值，因为修改 Canvas 的 `width/height` 会清空缓冲区并重置 2D context 状态。必须先设置尺寸，再 `postMessage` 通知子域绘制。
+
+开放数据域：
+
+```js
+const sharedCanvas = wx.getSharedCanvas()
+const ctx = sharedCanvas.getContext('2d')
+
+function prepareCanvasContext(layout) {
+  const fallbackDpr = layout.dpr > 0 ? layout.dpr : 1
+  const physicalWidth = Number(sharedCanvas.width) || layout.canvasWidth * fallbackDpr
+  const physicalHeight = Number(sharedCanvas.height) || layout.canvasHeight * fallbackDpr
+  const scaleX = physicalWidth / layout.canvasWidth
+  const scaleY = physicalHeight / layout.canvasHeight
+  ctx.setTransform(scaleX, 0, 0, scaleY, 0, 0)
+}
+```
+
+以实际只读尺寸计算 `scaleX/scaleY`，不要盲目使用消息中的 DPR。这样能兼容主域尺寸设置失败、运行时返回逻辑尺寸、横竖屏变化等差异。后续所有行项继续用主画布逻辑坐标绘制，例如从内容区 `x/y` 开始。
+
+### 主域贴回方式
+
+开放数据域按整张主画布的逻辑坐标绘制；主域先裁剪排行榜内容区，再把整张共享画布映射到主画布逻辑尺寸：
+
+```ts
+ctx.save()
+ctx.beginPath()
+ctx.rect(contentRect.x, contentRect.y, contentRect.w, contentRect.h)
+ctx.clip()
+ctx.drawImage(openDataContext.canvas, 0, 0, canvasWidth, canvasHeight)
+ctx.restore()
+```
+
+不要把物理尺寸 `canvas.width/canvas.height` 直接作为目标绘制尺寸，也不要把整张共享画布缩放进内容区；这两种做法都会产生二次缩放或坐标偏移。
+
+### 防闪烁与请求去重
+
+- 使用 `x:y:width:height:canvasWidth:canvasHeight:dpr:score` 等稳定字段生成渲染 key。
+- 相同 key 且非强制刷新时不重复 `postMessage`，避免每帧重新进入加载态。
+- 只在布局、DPR、分数变化或用户点击刷新时重拉好友数据。
+- 图片异步加载完成后只重绘已有 rows，不重新请求好友数据。
+
+### 回归测试
+
+至少覆盖两个边界：
+
+1. 主域测试：调用渲染请求后，断言 `openDataContext.canvas` 在 `postMessage` 前被设置为 `logicalSize * dpr`。
+2. 子域测试：构造 `width/height` setter 会抛出 `Cannot assign to read only canvas` 的共享画布，执行子域脚本并发送渲染消息，断言不抛错且实际调用了榜单文本绘制。
+
+这个测试能防止未来为了修复缩放问题，又把尺寸赋值错误地移回开放数据域。
+
+### 部署判断
+
+这类修复只涉及小游戏主包和开放数据域脚本，不需要重新部署云函数。重新构建后确认输出目录包含新版开放数据域文件，在微信开发者工具中清缓存并重新编译，再做真机预览。
 
 ## Canvas 资料编辑 UI
 

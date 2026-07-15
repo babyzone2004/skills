@@ -1,6 +1,6 @@
 ---
 name: wx-minigame
-description: 微信小游戏开发完整指南，覆盖 H5 到小游戏的全链路迁移适配。当用户提到微信小游戏、minigame、wx适配、H5移植、Canvas游戏迁移时必须使用此 skill。也适用于用户遇到小游戏特有问题的场景，例如"小游戏黑屏"、"iOS真机没声音"、"模拟器正常真机不行"、"Can't find variable setTimeout"、"weapp-adapter"、"wx.createCanvas"、"胶囊按钮遮挡"、"触摸事件不生效"、"InnerAudioContext"、"wx Storage"、排行榜云函数、共享云环境、头像昵称授权、隐私协议、相册头像上传等。即使用户没有明确说"小游戏"，只要涉及 GameGlobal、wx.onTouchStart、wx.createInnerAudioContext、wx.cloud、wx.createUserInfoButton 等微信小游戏 API，也应触发此 skill。也覆盖小游戏中使用 WebGL 的场景，如"渐变色阶""banding""preserveDrawingBuffer""drawImage WebGL canvas"等。
+description: 微信小游戏开发完整指南，覆盖 H5 到小游戏的全链路迁移适配。当用户提到微信小游戏、minigame、wx适配、H5移植、Canvas游戏迁移时必须使用此 skill。也适用于用户遇到小游戏特有问题的场景，例如"小游戏黑屏"、"iOS真机没声音"、"模拟器正常真机不行"、"Can't find variable setTimeout"、"weapp-adapter"、"wx.createCanvas"、"胶囊按钮遮挡"、"触摸事件不生效"、"InnerAudioContext"、"wx Storage"、排行榜云函数、朋友排行开放数据域、sharedCanvas 只读或缩放异常、共享云环境、头像昵称授权、隐私协议、相册头像上传等。即使用户没有明确说"小游戏"，只要涉及 GameGlobal、wx.onTouchStart、wx.createInnerAudioContext、wx.cloud、wx.createUserInfoButton、wx.getOpenDataContext、wx.getSharedCanvas 等微信小游戏 API，也应触发此 skill。也覆盖小游戏中使用 WebGL 的场景，如"渐变色阶""banding""preserveDrawingBuffer""drawImage WebGL canvas"等。
 ---
 
 # 微信小游戏开发与 H5 迁移指南
@@ -324,6 +324,7 @@ export function getItem(key: string): string | null {
 - 云端写入用户资料和榜单值应是主路径，缓存写入只做 best-effort，不能阻断保存成功。
 - 客户端保存资料后要以本次提交为短期权威，并写本地缓存；榜单刷新返回旧缓存时不能反向覆盖刚保存的昵称头像。
 - 微信头像昵称入口优先用小游戏原生能力（如透明 `createUserInfoButton` 覆盖 Canvas 区域），相册上传属于可选能力，真机隐私授权失败时应能隐藏入口或清晰降级。
+- 朋友排行开放数据域中把 `wx.getSharedCanvas()` 返回的画布视为只读：只在主域设置 `openDataContext.canvas.width/height`，子域读取实际尺寸并用 `ctx.setTransform` 映射逻辑坐标。遇到 `Cannot assign to read only canvas`、榜单缩在左上角或授权后空白时，读取参考文档中的“朋友排行 sharedCanvas 尺寸与 DPR”章节。
 
 ---
 
